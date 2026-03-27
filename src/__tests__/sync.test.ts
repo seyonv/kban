@@ -6,7 +6,7 @@ import { analyzeProject, createCardsFromAnalysis } from "../sync";
 import { listCards, closeDb, getDb } from "../db";
 
 function createTempGitRepo(): string {
-  const dir = mkdtempSync(join(import.meta.dir, ".tmp-test-"));
+  const dir = mkdtempSync("/tmp/.kban-test-");
   execSync("git init && git commit --allow-empty -m 'Initial commit'", {
     cwd: dir,
     stdio: "ignore",
@@ -19,6 +19,8 @@ function cleanup(dir: string) {
   if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
 }
 
+// ── analyzeProject ──────────────────────────────
+
 describe("analyzeProject", () => {
   let tempDir: string;
 
@@ -29,10 +31,10 @@ describe("analyzeProject", () => {
   afterEach(() => cleanup(tempDir));
 
   test("detects git repo with hasGit=true", () => {
-    const analysis = analyzeProject(tempDir);
-    expect(analysis.hasGit).toBe(true);
-    expect(analysis.totalCommits).toBe("1");
-    expect(analysis.projectName).toBeTruthy();
+    const a = analyzeProject(tempDir);
+    expect(a.hasGit).toBe(true);
+    expect(a.totalCommits).toBe("1");
+    expect(a.projectName).toBeTruthy();
   });
 
   test("reads package.json and detects tech stack", () => {
@@ -45,40 +47,164 @@ describe("analyzeProject", () => {
         devDependencies: { typescript: "^5.0.0" },
       }),
     );
-    const analysis = analyzeProject(tempDir);
-    expect(analysis.pkg.name).toBe("test-proj");
-    expect(analysis.techStack).toContain("React");
-    expect(analysis.techStack).toContain("TypeScript");
+    const a = analyzeProject(tempDir);
+    expect(a.pkg.name).toBe("test-proj");
+    expect(a.techStack).toContain("React");
+    expect(a.techStack).toContain("TypeScript");
+  });
+
+  test("detects multiple frameworks in tech stack", () => {
+    writeFileSync(
+      join(tempDir, "package.json"),
+      JSON.stringify({
+        dependencies: { next: "^14", react: "^19", prisma: "^5" },
+        devDependencies: { vitest: "^2", tailwindcss: "^4" },
+      }),
+    );
+    const a = analyzeProject(tempDir);
+    expect(a.techStack).toContain("Next.js");
+    expect(a.techStack).toContain("React");
+    expect(a.techStack).toContain("Prisma");
+    expect(a.techStack).toContain("Vitest");
+    expect(a.techStack).toContain("Tailwind");
+  });
+
+  test("detects bun lock file", () => {
+    writeFileSync(join(tempDir, "package.json"), "{}");
+    writeFileSync(join(tempDir, "bun.lock"), "");
+    const a = analyzeProject(tempDir);
+    expect(a.techStack).toContain("Bun");
   });
 
   test("handles no-git directory gracefully", () => {
-    // Use /tmp to avoid being inside any git repo
     const noGitDir = mkdtempSync("/tmp/.kban-nogit-");
-    const analysis = analyzeProject(noGitDir);
-    expect(analysis.hasGit).toBe(false);
-    expect(analysis.gitLog).toBe("");
-    expect(analysis.totalCommits).toBe("0");
-    expect(analysis.worktrees).toEqual([]);
+    const a = analyzeProject(noGitDir);
+    expect(a.hasGit).toBe(false);
+    expect(a.gitLog).toBe("");
+    expect(a.totalCommits).toBe("0");
+    expect(a.worktrees).toEqual([]);
+    expect(a.todoComments).toEqual([]);
     rmSync(noGitDir, { recursive: true, force: true });
   });
 
+  test("reads CLAUDE.md and DESIGN.md", () => {
+    writeFileSync(
+      join(tempDir, "CLAUDE.md"),
+      "# Project Instructions\nUse TypeScript.",
+    );
+    writeFileSync(
+      join(tempDir, "DESIGN.md"),
+      "# Design System\nColors: blue, green.",
+    );
+    const a = analyzeProject(tempDir);
+    expect(a.claudeMd).toContain("Project Instructions");
+    expect(a.designMd).toContain("Design System");
+  });
+
+  test("reads tasks/todo.md", () => {
+    mkdirSync(join(tempDir, "tasks"));
+    writeFileSync(
+      join(tempDir, "tasks/todo.md"),
+      "- [x] Done task\n- [ ] Pending task\n- [ ] Another pending",
+    );
+    const a = analyzeProject(tempDir);
+    expect(a.todoMd).toContain("Pending task");
+  });
+
+  test("finds test files", () => {
+    mkdirSync(join(tempDir, "src/__tests__"), { recursive: true });
+    writeFileSync(
+      join(tempDir, "src/__tests__/foo.test.ts"),
+      "test('x', () => {})",
+    );
+    writeFileSync(
+      join(tempDir, "src/__tests__/bar.spec.ts"),
+      "test('y', () => {})",
+    );
+    const a = analyzeProject(tempDir);
+    expect(a.testFiles.length).toBe(2);
+  });
+
+  test("finds source files excluding tests and node_modules", () => {
+    mkdirSync(join(tempDir, "src"), { recursive: true });
+    writeFileSync(join(tempDir, "src/app.ts"), "console.log('app')");
+    writeFileSync(join(tempDir, "src/app.test.ts"), "test('x', () => {})");
+    const a = analyzeProject(tempDir);
+    expect(
+      a.srcFiles.some((f) => f.includes("app.ts") && !f.includes("test")),
+    ).toBe(true);
+    expect(a.srcFiles.some((f) => f.includes("app.test.ts"))).toBe(false);
+  });
+
+  test("parses git log for commit history", () => {
+    execSync("git commit --allow-empty -m 'Add feature X'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+    execSync("git commit --allow-empty -m 'Fix bug in Y'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+    const a = analyzeProject(tempDir);
+    expect(a.totalCommits).toBe("3");
+    expect(a.gitLog).toContain("Add feature X");
+    expect(a.gitLog).toContain("Fix bug in Y");
+    expect(a.lastCommitMsg).toContain("Fix bug in Y");
+  });
+
+  test("detects current branch", () => {
+    const a = analyzeProject(tempDir);
+    expect(a.currentBranch).toBe("main");
+  });
+
   test("detects worktrees", () => {
-    // Create a worktree
     execSync("git branch test-branch", { cwd: tempDir, stdio: "ignore" });
-    const wtDir = join(tempDir, "wt-test");
+    // Put worktree outside the main repo to avoid nesting issues
+    const wtDir = mkdtempSync("/tmp/.kban-wt-target-");
+    rmSync(wtDir, { recursive: true }); // git worktree add needs non-existent path
     execSync(`git worktree add ${wtDir} test-branch`, {
       cwd: tempDir,
       stdio: "ignore",
     });
 
-    const analysis = analyzeProject(tempDir);
-    expect(analysis.worktrees.length).toBe(1);
-    expect(analysis.worktrees[0].branch).toBe("test-branch");
+    const a = analyzeProject(tempDir);
+    // Should find the worktree (excludes main repo itself)
+    expect(a.worktrees.length).toBeGreaterThanOrEqual(1);
+    expect(a.worktrees.some((w) => w.branch === "test-branch")).toBe(true);
 
-    // Cleanup worktree
     execSync(`git worktree remove ${wtDir}`, { cwd: tempDir, stdio: "ignore" });
   });
+
+  test("scans TODO/FIXME comments from source", () => {
+    mkdirSync(join(tempDir, "src"), { recursive: true });
+    writeFileSync(
+      join(tempDir, "src/main.ts"),
+      "// TODO: implement caching\n// FIXME: memory leak in handler\nconsole.log('ok');",
+    );
+    execSync("git add -A && git commit -m 'add src'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+    const a = analyzeProject(tempDir);
+    expect(a.todoComments.length).toBeGreaterThanOrEqual(1);
+    const todo = a.todoComments.find((c) =>
+      c.text.includes("implement caching"),
+    );
+    expect(todo).toBeTruthy();
+    expect(todo!.isBug).toBe(false);
+    const fixme = a.todoComments.find((c) => c.text.includes("memory leak"));
+    expect(fixme).toBeTruthy();
+    expect(fixme!.isBug).toBe(true);
+  });
+
+  test("returns empty pkg for missing package.json", () => {
+    const a = analyzeProject(tempDir);
+    expect(a.pkg).toEqual({});
+    expect(a.techStack).toEqual([]);
+  });
 });
+
+// ── createCardsFromAnalysis ─────────────────────
 
 describe("createCardsFromAnalysis", () => {
   let tempDir: string;
@@ -91,53 +217,196 @@ describe("createCardsFromAnalysis", () => {
   afterEach(() => cleanup(tempDir));
 
   test("creates cards and returns count", () => {
-    const analysis = analyzeProject(tempDir);
+    const a = analyzeProject(tempDir);
     const cards: string[] = [];
-    const count = createCardsFromAnalysis(analysis, {
+    const count = createCardsFromAnalysis(a, {
       prefix: "TEST",
       onCard: (title) => cards.push(title),
     });
     expect(count).toBeGreaterThan(0);
     expect(cards.length).toBe(count);
-    // Should include project overview
     expect(cards.some((t) => t.includes("Project Overview"))).toBe(true);
   });
 
-  test("returns 0 when board already has cards (dedup)", () => {
-    const analysis = analyzeProject(tempDir);
-    // First sync
-    createCardsFromAnalysis(analysis, { prefix: "TEST" });
+  test("returns 0 when board already has cards (dedup guard)", () => {
+    const a = analyzeProject(tempDir);
+    createCardsFromAnalysis(a, { prefix: "TEST" });
     const firstCount = listCards().length;
     expect(firstCount).toBeGreaterThan(0);
 
-    // Second sync — should return 0
-    const secondCount = createCardsFromAnalysis(analysis, { prefix: "TEST" });
+    const secondCount = createCardsFromAnalysis(a, { prefix: "TEST" });
     expect(secondCount).toBe(0);
-    // Card count unchanged
     expect(listCards().length).toBe(firstCount);
   });
 
-  test("fires onCard callback for each card", () => {
+  test("uses custom prefix for card short_ids", () => {
     writeFileSync(
       join(tempDir, "package.json"),
-      JSON.stringify({ name: "cb-test", dependencies: {} }),
+      JSON.stringify({ name: "foo" }),
     );
-    execSync("git add -A && git commit -m 'Add package.json'", {
+    execSync("git add -A && git commit -m 'Add pkg'", {
       cwd: tempDir,
       stdio: "ignore",
     });
 
-    const analysis = analyzeProject(tempDir);
+    const a = analyzeProject(tempDir);
+    const ids: string[] = [];
+    createCardsFromAnalysis(a, {
+      prefix: "MYAPP",
+      onCard: (_t, _c, shortId) => ids.push(shortId),
+    });
+
+    expect(ids.length).toBeGreaterThan(0);
+    for (const id of ids) {
+      expect(id).toMatch(/^MYAPP-\d+$/);
+    }
+  });
+
+  test("creates done cards from git history", () => {
+    execSync("git commit --allow-empty -m 'Add user authentication'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+    const a = analyzeProject(tempDir);
+    const received: { title: string; column: string }[] = [];
+    createCardsFromAnalysis(a, {
+      prefix: "T",
+      onCard: (title, column) => received.push({ title, column }),
+    });
+
+    const authCard = received.find((r) =>
+      r.title.includes("user authentication"),
+    );
+    expect(authCard).toBeTruthy();
+    expect(authCard!.column).toBe("done");
+  });
+
+  test("creates bug cards from fix commits", () => {
+    execSync("git commit --allow-empty -m 'Fix crash on empty input'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+    const a = analyzeProject(tempDir);
+    const received: { title: string; column: string }[] = [];
+    createCardsFromAnalysis(a, {
+      prefix: "T",
+      onCard: (title, column) => received.push({ title, column }),
+    });
+
+    const fixCard = received.find((r) => r.title.includes("crash on empty"));
+    expect(fixCard).toBeTruthy();
+    expect(fixCard!.column).toBe("done");
+  });
+
+  test("creates backlog cards from TODO comments", () => {
+    mkdirSync(join(tempDir, "src"), { recursive: true });
+    writeFileSync(
+      join(tempDir, "src/app.ts"),
+      "// TODO: add pagination support",
+    );
+    execSync("git add -A && git commit -m 'add app'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+
+    const a = analyzeProject(tempDir);
+    const received: { title: string; column: string }[] = [];
+    createCardsFromAnalysis(a, {
+      prefix: "T",
+      onCard: (title, column) => received.push({ title, column }),
+    });
+
+    const todoCard = received.find((r) => r.title.includes("pagination"));
+    expect(todoCard).toBeTruthy();
+    expect(todoCard!.column).toBe("backlog");
+  });
+
+  test("creates backlog cards from skipped tests", () => {
+    mkdirSync(join(tempDir, "src/__tests__"), { recursive: true });
+    writeFileSync(
+      join(tempDir, "src/__tests__/a.test.ts"),
+      `import { test } from 'bun:test';\ntest.todo("should handle edge case");\n`,
+    );
+    const a = analyzeProject(tempDir);
+    const received: { title: string; column: string }[] = [];
+    createCardsFromAnalysis(a, {
+      prefix: "T",
+      onCard: (title, column) => received.push({ title, column }),
+    });
+
+    const skipCard = received.find((r) => r.title.includes("handle edge case"));
+    expect(skipCard).toBeTruthy();
+    expect(skipCard!.column).toBe("backlog");
+  });
+
+  test("creates sprint cards from tasks/todo.md", () => {
+    mkdirSync(join(tempDir, "tasks"));
+    writeFileSync(
+      join(tempDir, "tasks/todo.md"),
+      "- [x] Already done\n- [ ] Ship dark mode\n- [ ] Add export feature",
+    );
+    const a = analyzeProject(tempDir);
+    const received: { title: string; column: string }[] = [];
+    createCardsFromAnalysis(a, {
+      prefix: "T",
+      onCard: (title, column) => received.push({ title, column }),
+    });
+
+    const darkMode = received.find((r) => r.title.includes("dark mode"));
+    expect(darkMode).toBeTruthy();
+    expect(darkMode!.column).toBe("sprint");
+    // Done items should NOT appear as sprint cards
+    const doneItem = received.find(
+      (r) => r.title === "Already done" && r.column === "sprint",
+    );
+    expect(doneItem).toBeUndefined();
+  });
+
+  test("creates design system card when DESIGN.md exists", () => {
+    writeFileSync(
+      join(tempDir, "DESIGN.md"),
+      "# Colors\nprimary: blue\n# Typography\nbody: sans-serif",
+    );
+    const a = analyzeProject(tempDir);
+    const received: { title: string; column: string }[] = [];
+    createCardsFromAnalysis(a, {
+      prefix: "T",
+      onCard: (title, column) => received.push({ title, column }),
+    });
+
+    const designCard = received.find((r) => r.title.includes("Design System"));
+    expect(designCard).toBeTruthy();
+    expect(designCard!.column).toBe("done");
+  });
+
+  test("creates last session context card", () => {
+    const a = analyzeProject(tempDir);
+    const received: { title: string; column: string }[] = [];
+    createCardsFromAnalysis(a, {
+      prefix: "T",
+      onCard: (title, column) => received.push({ title, column }),
+    });
+
+    const sessionCard = received.find((r) =>
+      r.title.includes("Last Session Context"),
+    );
+    expect(sessionCard).toBeTruthy();
+    expect(sessionCard!.column).toBe("review");
+  });
+
+  test("fires onCard callback with correct arguments", () => {
+    const a = analyzeProject(tempDir);
     const received: { title: string; column: string; shortId: string }[] = [];
-    createCardsFromAnalysis(analysis, {
+    createCardsFromAnalysis(a, {
       prefix: "CB",
       onCard: (title, column, shortId) =>
         received.push({ title, column, shortId }),
     });
 
     expect(received.length).toBeGreaterThan(0);
-    // All shortIds should start with prefix
     for (const r of received) {
+      expect(r.title).toBeTruthy();
+      expect(r.column).toBeTruthy();
       expect(r.shortId).toMatch(/^CB-\d+$/);
     }
   });

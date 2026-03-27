@@ -27,6 +27,9 @@ import {
   getPromptHistory,
   getPromptsByCard,
   getPromptById,
+  hasCardWithTitle,
+  hasPromptForCommit,
+  getInProgressCard,
   closeDb,
   getDb,
   setMeta,
@@ -472,5 +475,46 @@ describe("Prompt History", () => {
     const found = getPromptById(entry.id);
     expect(found).not.toBeNull();
     expect(found!.card_id).toBeNull();
+  });
+});
+
+// ── Dedup Helpers ───────────────────────────────
+
+describe("Dedup Helpers", () => {
+  let tempDir: string;
+  beforeEach(() => {
+    tempDir = freshDb();
+  });
+  afterEach(() => cleanup(tempDir));
+
+  test("hasCardWithTitle finds existing cards", () => {
+    createCard("Unique title");
+    expect(hasCardWithTitle("Unique title")).toBe(true);
+    expect(hasCardWithTitle("Nonexistent")).toBe(false);
+  });
+
+  test("hasCardWithTitle ignores archived cards", () => {
+    const card = createCard("Archived card");
+    updateCard(card.id, { archived: 1 as any });
+    expect(hasCardWithTitle("Archived card")).toBe(false);
+  });
+
+  test("hasPromptForCommit finds existing commits", () => {
+    addPrompt("Test", "text", { commitHash: "abc1234" });
+    expect(hasPromptForCommit("abc1234")).toBe(true);
+    expect(hasPromptForCommit("xyz9999")).toBe(false);
+  });
+
+  test("getInProgressCard returns first in-progress card by priority", () => {
+    createCard("Low priority", { column: "in_progress", priority: 4 });
+    createCard("High priority", { column: "in_progress", priority: 1 });
+    const card = getInProgressCard();
+    expect(card).not.toBeNull();
+    expect(card!.title).toBe("High priority");
+  });
+
+  test("getInProgressCard returns null when none in progress", () => {
+    createCard("Backlog card", { column: "backlog" });
+    expect(getInProgressCard()).toBeNull();
   });
 });

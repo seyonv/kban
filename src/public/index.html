@@ -721,6 +721,9 @@
         <div class="tab-nav">
           <button class="tab active" onclick="switchTab('board')">Board</button>
           <button class="tab" onclick="switchTab('prompts')">Prompts</button>
+          <button class="tab" onclick="switchTab('dashboard')">
+            Dashboard
+          </button>
         </div>
       </div>
       <div class="header-right" id="summaryBadges"></div>
@@ -731,6 +734,7 @@
     </div>
 
     <div class="prompts-view" id="promptsView"></div>
+    <div class="prompts-view" id="dashboardView"></div>
 
     <!-- Card Detail Modal -->
     <div
@@ -977,6 +981,7 @@
       </div>
 
       <div class="modal-actions">
+        <button class="btn btn-primary" onclick="copyCardContext('${card.short_id}')">◈ Copy for Claude</button>
         <select class="move-select" onchange="moveCardTo('${card.short_id}', this.value); closeModal();">
           <option value="">Move to...</option>
           ${COLUMNS.filter((c) => c !== card.column)
@@ -1017,6 +1022,47 @@
         fetchBoard();
       }
 
+      // ── Run with Claude ──────────────────
+      async function copyCardContext(shortId) {
+        const res = await fetch(API + `/api/cards/${shortId}`);
+        const card = await res.json();
+        const lines = [
+          `## Task: ${card.title}`,
+          `ID: ${card.short_id} | Type: ${card.type} | Priority: P${card.priority} | Column: ${card.column}`,
+        ];
+        if (card.description) lines.push(`\nDescription: ${card.description}`);
+        if (card.decisions?.length) {
+          lines.push(`\nDecision Log:`);
+          for (const d of card.decisions) {
+            lines.push(
+              `- ${d.decision}${d.reasoning ? ` (Why: ${d.reasoning})` : ""}`,
+            );
+          }
+        }
+        if (card.files?.length) {
+          lines.push(`\nRelated Files: ${card.files.join(", ")}`);
+        }
+        lines.push(
+          `\nPlease work on this task. Review the decision log for context on past choices.`,
+        );
+        const text = lines.join("\n");
+        await navigator.clipboard.writeText(text);
+        showToast("Copied card context to clipboard");
+      }
+
+      function showToast(msg) {
+        const toast = document.createElement("div");
+        toast.textContent = msg;
+        toast.style.cssText =
+          "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;padding:8px 20px;border-radius:6px;font-size:13px;font-weight:600;z-index:200;animation:fadeIn .2s";
+        document.body.appendChild(toast);
+        setTimeout(() => {
+          toast.style.opacity = "0";
+          toast.style.transition = "opacity .3s";
+        }, 2000);
+        setTimeout(() => toast.remove(), 2500);
+      }
+
       function esc(s) {
         const d = document.createElement("div");
         d.textContent = s;
@@ -1035,9 +1081,14 @@
           .classList.add("active");
         document.getElementById("boardView").style.display =
           tab === "board" ? "" : "none";
-        const pv = document.getElementById("promptsView");
-        pv.classList.toggle("active", tab === "prompts");
+        document
+          .getElementById("promptsView")
+          .classList.toggle("active", tab === "prompts");
+        document
+          .getElementById("dashboardView")
+          .classList.toggle("active", tab === "dashboard");
         if (tab === "prompts") fetchPrompts();
+        if (tab === "dashboard") fetchDashboard();
       }
 
       // ── Prompts ────────────────────────
@@ -1126,6 +1177,75 @@
         const days = Math.floor(hours / 24);
         if (days < 30) return `${days}d ago`;
         return new Date(dateStr).toLocaleDateString();
+      }
+
+      // ── Dashboard ─────────────────────────
+      async function fetchDashboard() {
+        const res = await fetch(API + "/api/dashboard");
+        const projects = await res.json();
+        renderDashboard(projects);
+      }
+
+      function renderDashboard(projects) {
+        const view = document.getElementById("dashboardView");
+        if (!projects.length) {
+          view.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">◈</div>
+              <div class="empty-state-text">No kban boards found across your projects.<br>Run <code>kban init</code> in other repos to see them here.</div>
+            </div>`;
+          return;
+        }
+
+        const cards = projects
+          .map((p) => {
+            const ago = p.lastActive ? timeAgo(p.lastActive) : "";
+            const counts = [
+              "backlog",
+              "sprint",
+              "in_progress",
+              "review",
+              "done",
+            ]
+              .filter((col) => p.counts[col])
+              .map((col) => {
+                const colors = {
+                  backlog: "var(--text-muted)",
+                  sprint: "var(--cyan)",
+                  in_progress: "var(--green)",
+                  review: "var(--orange)",
+                  done: "var(--text-muted)",
+                };
+                return `<span style="color:${colors[col]}">${p.counts[col]} ${col.replace("_", " ")}</span>`;
+              })
+              .join("  ");
+
+            const inProgressHtml = p.inProgress
+              .map(
+                (c) =>
+                  `<div style="font-size:12px;margin-top:4px"><span style="color:var(--green)">▸</span> <span style="color:var(--text-muted);font-family:monospace">${esc(c.short_id)}</span> ${esc(c.title)}</div>`,
+              )
+              .join("");
+
+            return `
+            <div class="prompt-item source-manual" style="cursor:default;border-left-color:var(--cyan)">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="prompt-summary">${esc(p.name)}</div>
+                <span style="font-size:12px;color:var(--text-muted)">${ago}</span>
+              </div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${esc(p.path)}</div>
+              <div style="font-size:12px;margin-top:6px">${counts}</div>
+              ${inProgressHtml}
+            </div>`;
+          })
+          .join("");
+
+        view.innerHTML = `
+          <div class="prompts-header">
+            <span class="prompts-title">All Projects</span>
+            <span class="prompts-count">${projects.length} boards</span>
+          </div>
+          ${cards}`;
       }
 
       // Keyboard shortcut

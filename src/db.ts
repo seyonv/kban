@@ -447,6 +447,33 @@ export function getCardsByFile(filePath: string): Card[] {
     .all(filePath) as Card[];
 }
 
+// --- Dedup & Query Helpers ---
+
+export function hasCardWithTitle(title: string): boolean {
+  const db = getDb();
+  const row = db
+    .query("SELECT 1 FROM cards WHERE title = ? AND archived = 0 LIMIT 1")
+    .get(title);
+  return row !== null;
+}
+
+export function hasPromptForCommit(hash: string): boolean {
+  const db = getDb();
+  const row = db
+    .query("SELECT 1 FROM prompt_history WHERE commit_hash = ? LIMIT 1")
+    .get(hash);
+  return row !== null;
+}
+
+export function getInProgressCard(): Card | null {
+  const db = getDb();
+  return db
+    .query(
+      `SELECT * FROM cards WHERE "column" = 'in_progress' AND archived = 0 ORDER BY priority ASC, sort_order ASC LIMIT 1`,
+    )
+    .get() as Card | null;
+}
+
 // --- Prompt History ---
 
 export interface PromptEntry {

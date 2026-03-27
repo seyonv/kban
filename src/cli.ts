@@ -7,9 +7,11 @@ import {
   deleteCard,
   listCards,
   addDecision,
+  addPrompt,
   getDecisions,
   getSnapshots,
   getCardFiles,
+  getInProgressCard,
   closeDb,
 } from "./db";
 import {
@@ -297,6 +299,61 @@ export function runCommand(cmd: string, args: string[]): void {
       break;
     }
 
+    case "log-prompt": {
+      const summary = args[0];
+      if (!summary) {
+        console.error(
+          `Usage: kban log-prompt "summary" [--prompt "full text"]`,
+        );
+        process.exit(1);
+      }
+      let prompt = summary;
+      const promptIdx = args.indexOf("--prompt");
+      if (promptIdx !== -1 && args[promptIdx + 1]) {
+        prompt = args[promptIdx + 1];
+      }
+      const inProgress = getInProgressCard();
+      const entry = addPrompt(summary, prompt, {
+        cardId: inProgress?.id,
+        source: "manual",
+      });
+      console.log(
+        `${t.green}Logged prompt${t.reset}${inProgress ? ` ${t.dim}→ ${inProgress.short_id}${t.reset}` : ""}`,
+      );
+      break;
+    }
+
+    case "hook-setup": {
+      const kbanPath = process.argv[1] ?? "kban";
+      console.log(`${t.bold}Claude Code Hook Setup${t.reset}`);
+      console.log("");
+      console.log(
+        `Add this to your ${t.cyan}~/.claude/settings.json${t.reset} under "hooks":`,
+      );
+      console.log("");
+      console.log(`${t.dim}"Stop": [${t.reset}`);
+      console.log(`${t.dim}  {${t.reset}`);
+      console.log(`${t.dim}    "hooks": [${t.reset}`);
+      console.log(`${t.dim}      {${t.reset}`);
+      console.log(`${t.dim}        "type": "command",${t.reset}`);
+      console.log(
+        `${t.dim}        "command": "bun ${kbanPath} log-prompt \\"Session completed\\" 2>/dev/null || true",${t.reset}`,
+      );
+      console.log(`${t.dim}        "timeout": 5${t.reset}`);
+      console.log(`${t.dim}      }${t.reset}`);
+      console.log(`${t.dim}    ]${t.reset}`);
+      console.log(`${t.dim}  }${t.reset}`);
+      console.log(`${t.dim}]${t.reset}`);
+      console.log("");
+      console.log(
+        `This will auto-log a prompt entry each time Claude Code finishes a task.`,
+      );
+      console.log(
+        `Prompts auto-link to the current in-progress card (if any).`,
+      );
+      break;
+    }
+
     case "help":
     default:
       if (cmd !== "help") {
@@ -314,6 +371,12 @@ export function runCommand(cmd: string, args: string[]): void {
       );
       console.log(
         `  ${t.cyan}web${t.reset}                     Open web UI in browser`,
+      );
+      console.log(
+        `  ${t.cyan}sync${t.reset}                    Incremental sync (add new items)`,
+      );
+      console.log(
+        `  ${t.cyan}dashboard${t.reset}               Multi-project overview`,
       );
       console.log(
         `  ${t.cyan}add <title>${t.reset}             Add a feature card`,
@@ -340,6 +403,9 @@ export function runCommand(cmd: string, args: string[]): void {
       console.log(
         `  ${t.cyan}log <id> <text>${t.reset}         Add decision log entry`,
       );
+      console.log(
+        `  ${t.cyan}log-prompt <text>${t.reset}       Log a prompt entry`,
+      );
       console.log(`  ${t.cyan}delete <id>${t.reset}             Delete a card`);
       console.log(
         `  ${t.cyan}context${t.reset}                 Full context dump (for AI)`,
@@ -349,6 +415,9 @@ export function runCommand(cmd: string, args: string[]): void {
       );
       console.log(
         `  ${t.cyan}archive${t.reset}                 Show archived cards`,
+      );
+      console.log(
+        `  ${t.cyan}hook-setup${t.reset}              Print Claude Code hook config`,
       );
       console.log("");
       console.log(`${t.bold}Columns:${t.reset} ${COLUMNS.join(", ")}`);

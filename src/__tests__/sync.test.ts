@@ -2,7 +2,11 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync } from "fs";
 import { execSync } from "child_process";
 import { join } from "path";
-import { analyzeProject, createCardsFromAnalysis } from "../sync";
+import {
+  analyzeProject,
+  createCardsFromAnalysis,
+  incrementalSync,
+} from "../sync";
 import { listCards, getPromptHistory, closeDb, getDb } from "../db";
 
 function createTempGitRepo(): string {
@@ -433,5 +437,75 @@ describe("createCardsFromAnalysis", () => {
     expect(prompts.every((p) => p.source === "git_commit")).toBe(true);
     // All should have commit hashes
     expect(prompts.every((p) => p.commit_hash)).toBe(true);
+  });
+});
+
+// ── incrementalSync ─────────────────────────────
+
+describe("incrementalSync", () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = createTempGitRepo();
+    process.chdir(tempDir);
+  });
+
+  afterEach(() => cleanup(tempDir));
+
+  test("adds new commits without duplicating existing ones", () => {
+    // Initial sync
+    const a = analyzeProject(tempDir);
+    createCardsFromAnalysis(a, { prefix: "T" });
+    const initialPrompts = getPromptHistory().length;
+
+    // Add a new commit
+    execSync("git commit --allow-empty -m 'Add new feature'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+
+    // Incremental sync
+    const { newPrompts } = incrementalSync(tempDir);
+    expect(newPrompts).toBe(1);
+
+    // Total should be initial + 1
+    expect(getPromptHistory().length).toBe(initialPrompts + 1);
+    expect(
+      getPromptHistory().some((p) => p.summary.includes("new feature")),
+    ).toBe(true);
+  });
+
+  test("does not duplicate prompts on re-sync", () => {
+    const a = analyzeProject(tempDir);
+    createCardsFromAnalysis(a, { prefix: "T" });
+    const firstCount = getPromptHistory().length;
+
+    // Run incremental sync twice — should add nothing
+    const r1 = incrementalSync(tempDir);
+    const r2 = incrementalSync(tempDir);
+    expect(r1.newPrompts).toBe(0);
+    expect(r2.newPrompts).toBe(0);
+    expect(getPromptHistory().length).toBe(firstCount);
+  });
+
+  test("adds new TODO comments as cards", () => {
+    const a = analyzeProject(tempDir);
+    createCardsFromAnalysis(a, { prefix: "T" });
+    const initialCards = listCards().length;
+
+    // Add a TODO comment
+    mkdirSync(join(tempDir, "src"), { recursive: true });
+    writeFileSync(
+      join(tempDir, "src/new.ts"),
+      "// TODO: implement caching layer",
+    );
+    execSync("git add -A && git commit -m 'add new file'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+
+    const { newCards } = incrementalSync(tempDir);
+    expect(newCards).toBeGreaterThanOrEqual(1);
+    expect(listCards().length).toBeGreaterThan(initialCards);
   });
 });

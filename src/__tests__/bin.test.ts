@@ -168,3 +168,41 @@ describe("render/spinner utilities", () => {
     }
   });
 });
+
+// ── Dashboard module ────────────────────────────
+
+describe("dashboard", () => {
+  test("scanProjects export exists and returns array", async () => {
+    const { scanProjects } = await import("../dashboard");
+    expect(typeof scanProjects).toBe("function");
+    const result = scanProjects();
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  test("runDashboard export exists", async () => {
+    const { runDashboard } = await import("../dashboard");
+    expect(typeof runDashboard).toBe("function");
+  });
+});
+
+// ── New CLI commands ────────────────────────────
+
+describe("new CLI commands", () => {
+  test("help includes sync, dashboard, log-prompt, hook-setup", async () => {
+    const { runCommand } = await import("../cli");
+    const original = console.log;
+    let output = "";
+    console.log = (...args: any[]) => {
+      output += args.join(" ") + "\n";
+    };
+    try {
+      runCommand("help", []);
+    } finally {
+      console.log = original;
+    }
+    expect(output).toContain("sync");
+    expect(output).toContain("dashboard");
+    expect(output).toContain("log-prompt");
+    expect(output).toContain("hook-setup");
+  });
+});

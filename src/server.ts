@@ -21,6 +21,7 @@ import {
   getPromptsByCard,
 } from "./db";
 import { COLUMNS, type Column } from "./models/card";
+import { scanProjects } from "./dashboard";
 
 const __dir = import.meta.dir;
 
@@ -144,6 +145,12 @@ function createFetchHandler() {
         return jsonRes({ error: "Decision text required" }, 400);
       const entry = addDecision(card.id, body.decision, body.reasoning);
       return jsonRes(entry, 201);
+    }
+
+    // GET /api/dashboard
+    if (path === "/api/dashboard" && req.method === "GET") {
+      const projects = scanProjects();
+      return jsonRes(projects);
     }
 
     // GET /api/prompts

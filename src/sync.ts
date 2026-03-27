@@ -21,6 +21,8 @@ import {
   addSnapshot,
   addPrompt,
   listCards,
+  hasCardWithTitle,
+  hasPromptForCommit,
   getDb,
   setMeta,
   closeDb,
@@ -650,6 +652,90 @@ export function createCardsFromAnalysis(
 
   db.exec("COMMIT");
   return count;
+}
+
+// ── Incremental sync (add new items without wiping) ──
+
+export function incrementalSync(
+  projectPath: string,
+  opts?: {
+    onCard?: (title: string, column: string, shortId: string) => void;
+    onPrompt?: (summary: string) => void;
+  },
+): { newCards: number; newPrompts: number } {
+  const a = analyzeProject(resolve(projectPath));
+  process.chdir(a.projectPath);
+
+  const db = getDb();
+  db.exec("BEGIN");
+
+  let newCards = 0;
+  let newPrompts = 0;
+  const onCard = opts?.onCard ?? (() => {});
+  const onPrompt = opts?.onPrompt ?? (() => {});
+
+  // Import new git commits as prompts
+  if (a.gitLog) {
+    const commits = a.gitLog.split("\n").filter(Boolean);
+    for (const commit of commits.slice(0, 30)) {
+      const [hash, ...rest] = commit.split(" ");
+      if (hasPromptForCommit(hash)) continue;
+      const subject = rest.join(" ");
+      const fullMsg = run(
+        `git log -1 --pretty=%B ${hash} 2>/dev/null`,
+        a.projectPath,
+      );
+      addPrompt(subject, fullMsg || subject, {
+        source: "git_commit",
+        commitHash: hash,
+        createdAt:
+          run(`git log -1 --pretty=%aI ${hash} 2>/dev/null`, a.projectPath) ||
+          undefined,
+      });
+      newPrompts++;
+      onPrompt(subject);
+    }
+  }
+
+  // Import new TODO comments as backlog cards
+  for (const todo of a.todoComments) {
+    const title = todo.text || `TODO in ${todo.file}:${todo.line}`;
+    if (hasCardWithTitle(title)) continue;
+    const c = createCard(title, {
+      column: "backlog",
+      type: todo.isBug ? "bug" : "chore",
+      priority: todo.isBug ? 2 : 4,
+      description: `Source: ${todo.file}:${todo.line}`,
+    });
+    addCardFile(c.id, todo.file);
+    newCards++;
+    onCard(title, "backlog", c.short_id);
+  }
+
+  // Import new skipped tests as backlog cards
+  for (const testFile of a.testFiles.slice(0, 20)) {
+    const content = readFile(a.projectPath, testFile);
+    if (!content) continue;
+    const skipped = content.matchAll(
+      /(?:it|test|describe)\.(?:skip|todo)\s*\(\s*['"](.*?)['"]/g,
+    );
+    for (const m of skipped) {
+      const title = `Test TODO: ${m[1]}`;
+      if (hasCardWithTitle(title)) continue;
+      const c = createCard(title, {
+        column: "backlog",
+        type: "chore",
+        priority: 4,
+        description: `Skipped test in ${testFile}`,
+      });
+      addCardFile(c.id, testFile);
+      newCards++;
+      onCard(title, "backlog", c.short_id);
+    }
+  }
+
+  db.exec("COMMIT");
+  return { newCards, newPrompts };
 }
 
 // ── Direct execution ────────────────────────────

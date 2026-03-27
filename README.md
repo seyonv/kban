@@ -6,6 +6,20 @@ CLI kanban board for developers. Zero deps, SQLite-backed, dark-themed web UI.
 bunx kban init
 ```
 
+### Board View
+
+Auto-populates cards from git history, TODO comments, skipped tests, branches, and worktrees. Drag and drop to move cards between columns.
+
+![Board View](assets/board-view.png)
+
+### Prompt History
+
+Timeline of all prompts and actions. Click any entry to expand the full text. Log new prompts inline.
+
+![Prompt History](assets/prompts-view.png)
+
+### CLI Onboarding
+
 ```
   ╭────────────────────────────────────────╮
   │  ◈  kban  ·  Project Kanban Board      │
@@ -18,49 +32,17 @@ bunx kban init
   ✓ DESIGN.md              3,890 chars of specs
   ✓ Source files            45 files
   ✓ Test files              14 files
-  ✓ Stack                   React, Electron, TypeScript, Vitest, Bun
   ✓ Worktrees               2 found
-
-  Project: preflop
-  Card prefix: PREF  (PREF-1, PREF-2, ...):
 
   Creating board...
 
     + [DONE]        PREF-1   Project Overview & Tech Stack
-    + [DONE]        PREF-2   Initial scaffold: Electron + React
-    + [DONE]        PREF-3   Add GTO-approximate ranges
     + [IN PROGRESS] PREF-12  Worktree: ios-companion-app
     + [BACKLOG]     PREF-18  Focus trapping for modal dialogs
     ...
 
   ✓ Created 24 cards
-
-  ╭────────────────────────────────────────────╮
-  │  ✓ Created 24 cards                        │
-  │                                            │
-  │  📋 8 backlog    🎯 3 sprint               │
-  │  🔨 2 in progress  👀 1 review             │
-  │  ✅ 10 done                                │
-  ╰────────────────────────────────────────────╯
-
   Starting board → http://localhost:3333
-```
-
-Then opens a dark-themed web UI with drag-and-drop:
-
-```
-╭━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╮
-│ KANBAN  ·  preflop  ·  just now                                   │
-╰━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╯
-
-  📋 8 backlog   🎯 3 sprint   🔨 2 in progress   👀 1 review   ✅ 10 done
-
-  BACKLOG (8)            SPRINT (3)           IN PROGRESS (2)
-  ──────────────         ──────────────       ──────────────
-  ┌────────────────┐     ┌────────────────┐   ┌────────────────┐
-  │ ◈ Focus trap   │     │ ⚠ Fix card     │   │ ◈ iOS app      │
-  │ PREF-18  P4    │     │ PREF-4   P2    │   │ PREF-12  P2    │
-  └────────────────┘     └────────────────┘   └────────────────┘
 ```
 
 ---

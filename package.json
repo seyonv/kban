@@ -1,0 +1,34 @@
+{
+  "name": "kban",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "CLI kanban board for developers. Zero deps, SQLite-backed, dark-themed web UI.",
+  "bin": {
+    "kban": "./src/bin.ts"
+  },
+  "files": [
+    "src/",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bun build --compile src/bin.ts --outfile dist/kban",
+    "dev": "bun run src/bin.ts",
+    "test": "bun test"
+  },
+  "engines": {
+    "bun": ">=1.0.0"
+  },
+  "keywords": [
+    "kanban",
+    "cli",
+    "board",
+    "todo",
+    "task",
+    "project-management",
+    "bun"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

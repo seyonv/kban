@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kanban Board</title>
+    <style>
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --surface-hover: #1c2333;
+        --border: #30363d;
+        --border-subtle: #21262d;
+        --text: #e6edf3;
+        --text-secondary: #8b949e;
+        --text-muted: #484f58;
+
+        --red: #f85149;
+        --orange: #d29922;
+        --blue: #58a6ff;
+        --green: #3fb950;
+        --purple: #bc8cff;
+        --cyan: #39d2c0;
+        --pink: #f778ba;
+
+        --p1: #f85149;
+        --p2: #d29922;
+        --p3: #58a6ff;
+        --p4: #8b949e;
+        --p5: #484f58;
+
+        --col-backlog: #8b949e;
+        --col-sprint: #39d2c0;
+        --col-in_progress: #3fb950;
+        --col-review: #d29922;
+        --col-done: #484f58;
+
+        --radius: 8px;
+        --radius-sm: 6px;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+        --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.5);
+        --transition: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        overflow-x: auto;
+      }
+
+      /* ── Header ──────────────────────────── */
+      .header {
+        padding: 20px 32px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        backdrop-filter: blur(12px);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: rgba(13, 17, 23, 0.85);
+      }
+
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .header-title {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .header-project {
+        font-size: 14px;
+        color: var(--text-secondary);
+        padding: 4px 10px;
+        background: var(--surface);
+        border-radius: 20px;
+        border: 1px solid var(--border);
+      }
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .summary-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        padding: 4px 10px;
+        background: var(--surface);
+        border-radius: 20px;
+        border: 1px solid var(--border-subtle);
+      }
+      .summary-badge .count {
+        font-weight: 600;
+        color: var(--text);
+      }
+
+      /* ── Board ───────────────────────────── */
+      .board {
+        display: flex;
+        gap: 16px;
+        padding: 24px 32px;
+        min-height: calc(100vh - 73px);
+        align-items: flex-start;
+      }
+
+      .column {
+        flex: 1;
+        min-width: 260px;
+        max-width: 340px;
+      }
+
+      .column-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 4px 12px;
+        border-bottom: 2px solid var(--border-subtle);
+        margin-bottom: 12px;
+      }
+
+      .column-title {
+        font-size: 13px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .column-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+
+      .column-count {
+        font-size: 12px;
+        color: var(--text-muted);
+        font-weight: 500;
+        background: var(--surface);
+        padding: 2px 8px;
+        border-radius: 10px;
+      }
+
+      .column-cards {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        min-height: 60px;
+      }
+
+      /* ── Cards ───────────────────────────── */
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+        cursor: pointer;
+        transition: all var(--transition);
+        position: relative;
+        border-left: 3px solid transparent;
+      }
+
+      .card:hover {
+        background: var(--surface-hover);
+        border-color: var(--border);
+        box-shadow: var(--shadow);
+        transform: translateY(-1px);
+      }
+
+      .card.priority-1 {
+        border-left-color: var(--p1);
+      }
+      .card.priority-2 {
+        border-left-color: var(--p2);
+      }
+      .card.priority-3 {
+        border-left-color: var(--p3);
+      }
+      .card.priority-4 {
+        border-left-color: var(--p4);
+      }
+      .card.priority-5 {
+        border-left-color: var(--p5);
+      }
+
+      .card.done {
+        opacity: 0.5;
+      }
+      .card.done:hover {
+        opacity: 0.7;
+      }
+
+      .card-title {
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1.4;
+        margin-bottom: 8px;
+        color: var(--text);
+      }
+
+      .card-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .card-id {
+        font-size: 12px;
+        font-family: "SF Mono", "Fira Code", monospace;
+        color: var(--text-muted);
+      }
+
+      .badge {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 1px 6px;
+        border-radius: 4px;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
+      .badge-priority {
+        color: #fff;
+      }
+      .badge-priority.p1 {
+        background: var(--p1);
+      }
+      .badge-priority.p2 {
+        background: var(--p2);
+        color: #000;
+      }
+      .badge-priority.p3 {
+        background: var(--p3);
+      }
+      .badge-priority.p4 {
+        background: var(--p4);
+        color: #000;
+      }
+      .badge-priority.p5 {
+        background: var(--p5);
+      }
+
+      .badge-type {
+        color: var(--text-secondary);
+        background: var(--bg);
+        border: 1px solid var(--border-subtle);
+      }
+      .badge-type.bug {
+        color: var(--red);
+        border-color: rgba(248, 81, 73, 0.3);
+      }
+      .badge-type.spike {
+        color: var(--purple);
+        border-color: rgba(188, 140, 255, 0.3);
+      }
+
+      .card-context {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-top: 6px;
+      }
+
+      .card-decisions {
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--border-subtle);
+      }
+      .card-decisions-count {
+        font-size: 11px;
+        color: var(--text-muted);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      /* ── Add Card ────────────────────────── */
+      .add-card-btn {
+        width: 100%;
+        padding: 8px 12px;
+        background: transparent;
+        border: 1px dashed var(--border-subtle);
+        border-radius: var(--radius-sm);
+        color: var(--text-muted);
+        font-size: 13px;
+        cursor: pointer;
+        transition: all var(--transition);
+        text-align: left;
+        font-family: inherit;
+        margin-top: 4px;
+      }
+      .add-card-btn:hover {
+        background: var(--surface);
+        border-color: var(--border);
+        color: var(--text-secondary);
+      }
+
+      .add-form {
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      .add-form.active {
+        display: flex;
+      }
+
+      .add-form input,
+      .add-form select {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 8px 10px;
+        color: var(--text);
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+      }
+      .add-form input:focus,
+      .add-form select:focus {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+      }
+
+      .add-form-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .btn {
+        padding: 6px 14px;
+        border-radius: var(--radius-sm);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid transparent;
+        font-family: inherit;
+        transition: all var(--transition);
+      }
+      .btn-primary {
+        background: var(--blue);
+        color: #fff;
+      }
+      .btn-primary:hover {
+        opacity: 0.9;
+      }
+      .btn-ghost {
+        background: transparent;
+        color: var(--text-secondary);
+        border-color: var(--border);
+      }
+      .btn-ghost:hover {
+        background: var(--surface);
+      }
+
+      /* ── Card Modal ──────────────────────── */
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 100;
+        backdrop-filter: blur(4px);
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 80px;
+      }
+      .modal-overlay.active {
+        display: flex;
+      }
+
+      .modal {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        width: 90%;
+        max-width: 580px;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: var(--shadow-lg);
+      }
+
+      .modal-header {
+        padding: 20px 24px 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+      }
+
+      .modal-title {
+        font-size: 18px;
+        font-weight: 600;
+        line-height: 1.3;
+        flex: 1;
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        font-size: 20px;
+        padding: 4px 8px;
+        border-radius: 4px;
+      }
+      .modal-close:hover {
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      .modal-body {
+        padding: 16px 24px 24px;
+      }
+
+      .modal-meta {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+
+      .modal-section {
+        margin-top: 20px;
+      }
+      .modal-section-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+
+      .decision-item {
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border-subtle);
+        font-size: 13px;
+      }
+      .decision-item:last-child {
+        border-bottom: none;
+      }
+      .decision-date {
+        color: var(--text-muted);
+        font-size: 12px;
+      }
+      .decision-text {
+        color: var(--text);
+        margin-top: 2px;
+      }
+      .decision-why {
+        color: var(--text-secondary);
+        font-size: 12px;
+        font-style: italic;
+        margin-top: 2px;
+      }
+
+      .file-list {
+        list-style: none;
+      }
+      .file-list li {
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 13px;
+        color: var(--cyan);
+        padding: 2px 0;
+      }
+
+      .modal-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border-subtle);
+        flex-wrap: wrap;
+      }
+
+      .btn-danger {
+        background: transparent;
+        color: var(--red);
+        border: 1px solid rgba(248, 81, 73, 0.3);
+      }
+      .btn-danger:hover {
+        background: rgba(248, 81, 73, 0.1);
+      }
+
+      .move-select {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 6px 10px;
+        color: var(--text);
+        font-size: 13px;
+        font-family: inherit;
+        cursor: pointer;
+      }
+
+      /* ── Drag and Drop ───────────────────── */
+      .card.dragging {
+        opacity: 0.4;
+      }
+      .column-cards.drag-over {
+        background: rgba(88, 166, 255, 0.05);
+        border-radius: var(--radius);
+        outline: 2px dashed rgba(88, 166, 255, 0.3);
+        outline-offset: -2px;
+      }
+
+      /* ── Scrollbar ───────────────────────── */
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="header-left">
+        <span class="header-title">◈ Kanban</span>
+        <span class="header-project" id="projectName"></span>
+      </div>
+      <div class="header-right" id="summaryBadges"></div>
+    </div>
+
+    <div class="board" id="board"></div>
+
+    <!-- Card Detail Modal -->
+    <div
+      class="modal-overlay"
+      id="modalOverlay"
+      onclick="if (event.target === this) closeModal();"
+    >
+      <div class="modal" id="modal"></div>
+    </div>
+
+    <script>
+      const API = "";
+      const COLUMNS = ["backlog", "sprint", "in_progress", "review", "done"];
+      const COL_LABELS = {
+        backlog: "Backlog",
+        sprint: "Sprint",
+        in_progress: "In Progress",
+        review: "Review",
+        done: "Done",
+      };
+      const COL_COLORS = {
+        backlog: "#8b949e",
+        sprint: "#39d2c0",
+        in_progress: "#3fb950",
+        review: "#d29922",
+        done: "#484f58",
+      };
+      const P_LABELS = { 1: "CRIT", 2: "HIGH", 3: "MED", 4: "LOW", 5: "MIN" };
+      const TYPE_ICONS = { feature: "◈", bug: "⚠", chore: "⚙", spike: "◆" };
+      let boardData = null;
+
+      async function fetchBoard() {
+        const res = await fetch(API + "/api/board");
+        boardData = await res.json();
+        render();
+      }
+
+      function render() {
+        if (!boardData) return;
+        document.getElementById("projectName").textContent = boardData.project;
+
+        // Summary badges
+        const badges = COLUMNS.map((col) => {
+          const count = boardData.columns[col]?.length ?? 0;
+          if (!count) return "";
+          return `<span class="summary-badge"><span class="count">${count}</span>${col.replace("_", " ")}</span>`;
+        })
+          .filter(Boolean)
+          .join("");
+        document.getElementById("summaryBadges").innerHTML = badges;
+
+        // Board columns
+        const board = document.getElementById("board");
+        board.innerHTML = COLUMNS.map((col) => {
+          const cards = boardData.columns[col] ?? [];
+          const cardsHtml = cards.map((c) => renderCard(c)).join("");
+          return `
+      <div class="column" data-column="${col}">
+        <div class="column-header">
+          <span class="column-title">
+            <span class="column-dot" style="background:${COL_COLORS[col]}"></span>
+            ${COL_LABELS[col]}
+          </span>
+          <span class="column-count">${cards.length}</span>
+        </div>
+        <div class="column-cards" data-column="${col}"
+             ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event, '${col}')">
+          ${cardsHtml}
+        </div>
+        <button class="add-card-btn" onclick="showAddForm(this, '${col}')">+ Add card</button>
+        <div class="add-form" data-col="${col}">
+          <input type="text" placeholder="Card title..." onkeydown="if(event.key==='Enter')submitAdd('${col}');if(event.key==='Escape')hideAddForm('${col}')">
+          <div style="display:flex;gap:6px">
+            <select class="add-type">
+              <option value="feature">Feature</option>
+              <option value="bug">Bug</option>
+              <option value="chore">Chore</option>
+              <option value="spike">Spike</option>
+            </select>
+            <select class="add-priority">
+              <option value="3">P3 - Med</option>
+              <option value="1">P1 - Critical</option>
+              <option value="2">P2 - High</option>
+              <option value="4">P4 - Low</option>
+              <option value="5">P5 - Minimal</option>
+            </select>
+          </div>
+          <div class="add-form-actions">
+            <button class="btn btn-primary" onclick="submitAdd('${col}')">Add</button>
+            <button class="btn btn-ghost" onclick="hideAddForm('${col}')">Cancel</button>
+          </div>
+        </div>
+      </div>
+    `;
+        }).join("");
+      }
+
+      function renderCard(c) {
+        const isDone = c.column === "done";
+        const decCount = c.decisions?.length ?? 0;
+        const fileCount = c.files?.length ?? 0;
+        let context = "";
+        if (c.column === "in_progress") {
+          const days = Math.floor(
+            (Date.now() - new Date(c.updated_at).getTime()) / 86400000,
+          );
+          context = `<div class="card-context">⏱ ${days}d in progress</div>`;
+        } else if (isDone && c.completed_at) {
+          context = `<div class="card-context">✓ ${c.completed_at.slice(0, 10)}</div>`;
+        }
+        const extras = [];
+        if (decCount)
+          extras.push(
+            `<span class="card-decisions-count">📝 ${decCount}</span>`,
+          );
+        if (fileCount)
+          extras.push(
+            `<span class="card-decisions-count">📁 ${fileCount}</span>`,
+          );
+
+        return `
+    <div class="card priority-${c.priority} ${isDone ? "done" : ""}"
+         draggable="true" data-id="${c.short_id}"
+         ondragstart="onDragStart(event, '${c.short_id}')"
+         ondragend="onDragEnd(event)"
+         onclick="openCard('${c.short_id}')">
+      <div class="card-title">${esc(c.title)}</div>
+      <div class="card-meta">
+        <span class="card-id">${c.short_id}</span>
+        <span class="badge badge-priority p${c.priority}">${P_LABELS[c.priority]}</span>
+        <span class="badge badge-type ${c.type}">${TYPE_ICONS[c.type] ?? ""} ${c.type}</span>
+      </div>
+      ${context}
+      ${extras.length ? `<div class="card-decisions">${extras.join(" ")}</div>` : ""}
+    </div>
+  `;
+      }
+
+      // ── Add Card ──────────────────────────
+      function showAddForm(btn, col) {
+        btn.style.display = "none";
+        const form = document.querySelector(`.add-form[data-col="${col}"]`);
+        form.classList.add("active");
+        form.querySelector("input").focus();
+      }
+      function hideAddForm(col) {
+        const form = document.querySelector(`.add-form[data-col="${col}"]`);
+        form.classList.remove("active");
+        form.querySelector("input").value = "";
+        form.previousElementSibling.style.display = "";
+      }
+      async function submitAdd(col) {
+        const form = document.querySelector(`.add-form[data-col="${col}"]`);
+        const title = form.querySelector("input").value.trim();
+        if (!title) return;
+        const type = form.querySelector(".add-type").value;
+        const priority = parseInt(form.querySelector(".add-priority").value);
+        await fetch(API + "/api/cards", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title, type, priority, column: col }),
+        });
+        hideAddForm(col);
+        fetchBoard();
+      }
+
+      // ── Drag and Drop ─────────────────────
+      let dragId = null;
+      function onDragStart(e, id) {
+        dragId = id;
+        e.target.classList.add("dragging");
+        e.dataTransfer.effectAllowed = "move";
+      }
+      function onDragEnd(e) {
+        e.target.classList.remove("dragging");
+      }
+      function onDragOver(e) {
+        e.preventDefault();
+        e.currentTarget.classList.add("drag-over");
+      }
+      function onDragLeave(e) {
+        e.currentTarget.classList.remove("drag-over");
+      }
+      async function onDrop(e, col) {
+        e.preventDefault();
+        e.currentTarget.classList.remove("drag-over");
+        if (!dragId) return;
+        await fetch(API + `/api/cards/${dragId}/move`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ column: col }),
+        });
+        dragId = null;
+        fetchBoard();
+      }
+
+      // ── Card Modal ────────────────────────
+      async function openCard(shortId) {
+        const res = await fetch(API + `/api/cards/${shortId}`);
+        const card = await res.json();
+        const m = document.getElementById("modal");
+        const isDone = card.column === "done";
+
+        const decisionsHtml =
+          (card.decisions ?? [])
+            .map(
+              (d) => `
+    <div class="decision-item">
+      <div class="decision-date">${d.created_at.slice(0, 10)}</div>
+      <div class="decision-text">${esc(d.decision)}</div>
+      ${d.reasoning ? `<div class="decision-why">Why: ${esc(d.reasoning)}</div>` : ""}
+    </div>
+  `,
+            )
+            .join("") ||
+          '<div style="color:var(--text-muted);font-size:13px">No decisions logged yet</div>';
+
+        const filesHtml = (card.files ?? []).length
+          ? `<ul class="file-list">${card.files.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>`
+          : '<div style="color:var(--text-muted);font-size:13px">No files linked</div>';
+
+        m.innerHTML = `
+    <div class="modal-header">
+      <div class="modal-title">${esc(card.title)}</div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-meta">
+        <span class="card-id">${card.short_id}</span>
+        <span class="badge badge-priority p${card.priority}">${P_LABELS[card.priority]}</span>
+        <span class="badge badge-type ${card.type}">${TYPE_ICONS[card.type] ?? ""} ${card.type}</span>
+        <span class="badge badge-type">${card.column.replace("_", " ")}</span>
+      </div>
+      ${card.description ? `<p style="color:var(--text-secondary);font-size:14px;line-height:1.5;margin-bottom:12px">${esc(card.description)}</p>` : ""}
+
+      <div class="modal-section">
+        <div class="modal-section-title">Decision Log</div>
+        ${decisionsHtml}
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Files</div>
+        ${filesHtml}
+      </div>
+
+      <div class="modal-actions">
+        <select class="move-select" onchange="moveCardTo('${card.short_id}', this.value); closeModal();">
+          <option value="">Move to...</option>
+          ${COLUMNS.filter((c) => c !== card.column)
+            .map((c) => `<option value="${c}">${COL_LABELS[c]}</option>`)
+            .join("")}
+        </select>
+        <button class="btn btn-ghost" onclick="markDone('${card.short_id}')">✓ Done</button>
+        <button class="btn btn-danger" onclick="deleteCard('${card.short_id}')">Delete</button>
+      </div>
+    </div>
+  `;
+        document.getElementById("modalOverlay").classList.add("active");
+      }
+
+      function closeModal() {
+        document.getElementById("modalOverlay").classList.remove("active");
+      }
+
+      async function moveCardTo(id, col) {
+        if (!col) return;
+        await fetch(API + `/api/cards/${id}/move`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ column: col }),
+        });
+        fetchBoard();
+      }
+
+      async function markDone(id) {
+        await moveCardTo(id, "done");
+        closeModal();
+      }
+
+      async function deleteCard(id) {
+        if (!confirm("Delete this card?")) return;
+        await fetch(API + `/api/cards/${id}`, { method: "DELETE" });
+        closeModal();
+        fetchBoard();
+      }
+
+      function esc(s) {
+        const d = document.createElement("div");
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
+      // Keyboard shortcut
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeModal();
+      });
+
+      // Boot
+      fetchBoard();
+      // Auto-refresh every 5s
+      setInterval(fetchBoard, 5000);
+    </script>
+  </body>
+</html>

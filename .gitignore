@@ -3,3 +3,5 @@ dist/
 .kanban/
 *.db-wal
 *.db-shm
+.env
+.env.*

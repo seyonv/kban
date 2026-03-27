@@ -524,6 +524,182 @@
         outline-offset: -2px;
       }
 
+      /* ── Tabs ────────────────────────────── */
+      .tab-nav {
+        display: flex;
+        gap: 4px;
+        background: var(--surface);
+        border-radius: 8px;
+        padding: 3px;
+        border: 1px solid var(--border-subtle);
+      }
+      .tab {
+        padding: 6px 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-muted);
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        font-family: inherit;
+        transition: all var(--transition);
+      }
+      .tab:hover {
+        color: var(--text-secondary);
+      }
+      .tab.active {
+        background: var(--bg);
+        color: var(--text);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+      }
+
+      /* ── Prompt History View ─────────────── */
+      .prompts-view {
+        display: none;
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 24px 32px;
+      }
+      .prompts-view.active {
+        display: block;
+      }
+
+      .prompts-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+      }
+      .prompts-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .prompts-count {
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+
+      .prompt-item {
+        background: var(--surface);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius);
+        padding: 14px 16px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: all var(--transition);
+        border-left: 3px solid var(--border-subtle);
+      }
+      .prompt-item:hover {
+        background: var(--surface-hover);
+        border-color: var(--border);
+      }
+      .prompt-item.source-git_commit {
+        border-left-color: var(--purple);
+      }
+      .prompt-item.source-manual {
+        border-left-color: var(--blue);
+      }
+      .prompt-item.source-sync {
+        border-left-color: var(--cyan);
+      }
+
+      .prompt-summary {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text);
+        margin-bottom: 6px;
+      }
+      .prompt-text {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.5;
+        white-space: pre-wrap;
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+      }
+      .prompt-item.expanded .prompt-text {
+        max-height: 500px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--border-subtle);
+      }
+      .prompt-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .prompt-source {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 1px 6px;
+        border-radius: 3px;
+        background: var(--bg);
+        border: 1px solid var(--border-subtle);
+      }
+      .prompt-source.git_commit {
+        color: var(--purple);
+        border-color: rgba(188, 140, 255, 0.3);
+      }
+      .prompt-source.manual {
+        color: var(--blue);
+        border-color: rgba(88, 166, 255, 0.3);
+      }
+      .prompt-card-link {
+        color: var(--cyan);
+        cursor: pointer;
+        font-family: "SF Mono", "Fira Code", monospace;
+      }
+      .prompt-card-link:hover {
+        text-decoration: underline;
+      }
+
+      .prompt-hash {
+        font-family: "SF Mono", "Fira Code", monospace;
+        color: var(--text-muted);
+      }
+
+      .add-prompt-bar {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 20px;
+      }
+      .add-prompt-bar input {
+        flex: 1;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px;
+        color: var(--text);
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+      }
+      .add-prompt-bar input:focus {
+        border-color: var(--blue);
+        box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-muted);
+      }
+      .empty-state-icon {
+        font-size: 32px;
+        margin-bottom: 12px;
+      }
+      .empty-state-text {
+        font-size: 14px;
+      }
+
       /* ── Scrollbar ───────────────────────── */
       ::-webkit-scrollbar {
         width: 6px;
@@ -542,11 +718,19 @@
       <div class="header-left">
         <span class="header-title">◈ Kanban</span>
         <span class="header-project" id="projectName"></span>
+        <div class="tab-nav">
+          <button class="tab active" onclick="switchTab('board')">Board</button>
+          <button class="tab" onclick="switchTab('prompts')">Prompts</button>
+        </div>
       </div>
       <div class="header-right" id="summaryBadges"></div>
     </div>
 
-    <div class="board" id="board"></div>
+    <div id="boardView">
+      <div class="board" id="board"></div>
+    </div>
+
+    <div class="prompts-view" id="promptsView"></div>
 
     <!-- Card Detail Modal -->
     <div
@@ -839,6 +1023,111 @@
         return d.innerHTML;
       }
 
+      // ── Tab Navigation ──────────────────
+      let currentTab = "board";
+      function switchTab(tab) {
+        currentTab = tab;
+        document
+          .querySelectorAll(".tab")
+          .forEach((t) => t.classList.remove("active"));
+        document
+          .querySelector(`.tab[onclick*="${tab}"]`)
+          .classList.add("active");
+        document.getElementById("boardView").style.display =
+          tab === "board" ? "" : "none";
+        const pv = document.getElementById("promptsView");
+        pv.classList.toggle("active", tab === "prompts");
+        if (tab === "prompts") fetchPrompts();
+      }
+
+      // ── Prompts ────────────────────────
+      let promptsData = [];
+
+      async function fetchPrompts() {
+        const res = await fetch(API + "/api/prompts");
+        promptsData = await res.json();
+        renderPrompts();
+      }
+
+      function renderPrompts() {
+        const view = document.getElementById("promptsView");
+        if (!promptsData.length) {
+          view.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">📝</div>
+              <div class="empty-state-text">No prompt history yet.<br>Prompts will appear here after syncing a project.</div>
+            </div>`;
+          return;
+        }
+
+        const items = promptsData
+          .map((p) => {
+            const ago = timeAgo(p.created_at);
+            const sourceClass = p.source || "manual";
+            const hashHtml = p.commit_hash
+              ? `<span class="prompt-hash">${p.commit_hash}</span>`
+              : "";
+            const cardHtml = p.card_id
+              ? `<span class="prompt-card-link" onclick="event.stopPropagation(); openCard('${p.card_id}')">linked card</span>`
+              : "";
+            const promptText = p.prompt !== p.summary ? p.prompt : "";
+
+            return `
+            <div class="prompt-item source-${sourceClass}" onclick="this.classList.toggle('expanded')">
+              <div class="prompt-summary">${esc(p.summary)}</div>
+              ${promptText ? `<div class="prompt-text">${esc(promptText)}</div>` : ""}
+              <div class="prompt-meta">
+                <span class="prompt-source ${sourceClass}">${sourceClass.replace("_", " ")}</span>
+                ${hashHtml}
+                ${cardHtml}
+                <span>${ago}</span>
+              </div>
+            </div>`;
+          })
+          .join("");
+
+        view.innerHTML = `
+          <div class="prompts-header">
+            <span class="prompts-title">Prompt History</span>
+            <span class="prompts-count">${promptsData.length} entries</span>
+          </div>
+          <div class="add-prompt-bar">
+            <input type="text" id="promptInput" placeholder="Log a prompt or note..."
+                   onkeydown="if(event.key==='Enter')submitPrompt()">
+            <button class="btn btn-primary" onclick="submitPrompt()">Log</button>
+          </div>
+          ${items}`;
+      }
+
+      async function submitPrompt() {
+        const input = document.getElementById("promptInput");
+        const text = input.value.trim();
+        if (!text) return;
+        await fetch(API + "/api/prompts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            summary: text,
+            prompt: text,
+            source: "manual",
+          }),
+        });
+        input.value = "";
+        fetchPrompts();
+      }
+
+      function timeAgo(dateStr) {
+        const diff = Date.now() - new Date(dateStr).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 1) return "just now";
+        if (mins < 60) return `${mins}m ago`;
+        const hours = Math.floor(mins / 60);
+        if (hours < 24) return `${hours}h ago`;
+        const days = Math.floor(hours / 24);
+        if (days < 30) return `${days}d ago`;
+        return new Date(dateStr).toLocaleDateString();
+      }
+
       // Keyboard shortcut
       document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") closeModal();
@@ -847,7 +1136,9 @@
       // Boot
       fetchBoard();
       // Auto-refresh every 5s
-      setInterval(fetchBoard, 5000);
+      setInterval(() => {
+        if (currentTab === "board") fetchBoard();
+      }, 5000);
     </script>
   </body>
 </html>

@@ -19,6 +19,7 @@ import {
   addDecision,
   addCardFile,
   addSnapshot,
+  addPrompt,
   listCards,
   getDb,
   setMeta,
@@ -444,6 +445,24 @@ export function createCardsFromAnalysis(
         type: "bug",
         priority: 3,
         description: `Commit: ${hash}`,
+      });
+    }
+
+    // Import all commits as prompt history entries
+    for (const commit of commits.slice(0, 30)) {
+      const [hash, ...rest] = commit.split(" ");
+      const subject = rest.join(" ");
+      // Get full commit message for prompt text
+      const fullMsg = run(
+        `git log -1 --pretty=%B ${hash} 2>/dev/null`,
+        a.projectPath,
+      );
+      addPrompt(subject, fullMsg || subject, {
+        source: "git_commit",
+        commitHash: hash,
+        createdAt:
+          run(`git log -1 --pretty=%aI ${hash} 2>/dev/null`, a.projectPath) ||
+          undefined,
       });
     }
   }

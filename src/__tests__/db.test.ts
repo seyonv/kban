@@ -23,6 +23,10 @@ import {
   addCardFile,
   getCardFiles,
   getCardsByFile,
+  addPrompt,
+  getPromptHistory,
+  getPromptsByCard,
+  getPromptById,
   closeDb,
   getDb,
   setMeta,
@@ -378,5 +382,95 @@ describe("autoArchive", () => {
 
     expect(listCards().length).toBe(1);
     expect(listCards({ archived: true }).length).toBe(0);
+  });
+});
+
+// ── Prompt History ──────────────────────────────
+
+describe("Prompt History", () => {
+  let tempDir: string;
+  beforeEach(() => {
+    tempDir = freshDb();
+  });
+  afterEach(() => cleanup(tempDir));
+
+  test("addPrompt creates entry with all fields", () => {
+    const entry = addPrompt("Add dark mode", "Please add a dark mode toggle", {
+      source: "manual",
+      commitHash: "abc1234",
+    });
+    expect(entry.id).toBeGreaterThan(0);
+    expect(entry.summary).toBe("Add dark mode");
+    expect(entry.prompt).toBe("Please add a dark mode toggle");
+    expect(entry.source).toBe("manual");
+    expect(entry.commit_hash).toBe("abc1234");
+    expect(entry.card_id).toBeNull();
+    expect(entry.created_at).toBeTruthy();
+  });
+
+  test("addPrompt links to card", () => {
+    const card = createCard("My card");
+    const entry = addPrompt("Fix bug", "Fix the login bug", {
+      cardId: card.id,
+    });
+    expect(entry.card_id).toBe(card.id);
+  });
+
+  test("getPromptHistory returns newest first", () => {
+    addPrompt("First", "first prompt", {
+      createdAt: "2025-01-01T00:00:00Z",
+    });
+    addPrompt("Second", "second prompt", {
+      createdAt: "2025-01-02T00:00:00Z",
+    });
+    addPrompt("Third", "third prompt", {
+      createdAt: "2025-01-03T00:00:00Z",
+    });
+
+    const history = getPromptHistory();
+    expect(history.length).toBe(3);
+    expect(history[0].summary).toBe("Third");
+    expect(history[2].summary).toBe("First");
+  });
+
+  test("getPromptHistory respects limit", () => {
+    for (let i = 0; i < 5; i++) {
+      addPrompt(`Prompt ${i}`, `text ${i}`);
+    }
+    const limited = getPromptHistory(3);
+    expect(limited.length).toBe(3);
+  });
+
+  test("getPromptsByCard filters correctly", () => {
+    const c1 = createCard("Card A");
+    const c2 = createCard("Card B");
+    addPrompt("For A", "prompt A", { cardId: c1.id });
+    addPrompt("For B", "prompt B", { cardId: c2.id });
+    addPrompt("Also for A", "prompt A2", { cardId: c1.id });
+
+    const forA = getPromptsByCard(c1.id);
+    expect(forA.length).toBe(2);
+    expect(forA.every((p) => p.card_id === c1.id)).toBe(true);
+  });
+
+  test("getPromptById returns single entry", () => {
+    const entry = addPrompt("Test", "test prompt");
+    const found = getPromptById(entry.id);
+    expect(found).not.toBeNull();
+    expect(found!.summary).toBe("Test");
+  });
+
+  test("getPromptById returns null for missing", () => {
+    expect(getPromptById(9999)).toBeNull();
+  });
+
+  test("prompt persists after linked card is deleted (SET NULL)", () => {
+    const card = createCard("Will delete");
+    const entry = addPrompt("Linked prompt", "text", { cardId: card.id });
+    deleteCard(card.id);
+
+    const found = getPromptById(entry.id);
+    expect(found).not.toBeNull();
+    expect(found!.card_id).toBeNull();
   });
 });

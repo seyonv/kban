@@ -11,7 +11,7 @@ import type {
   CardFile,
 } from "./models/card";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 /**
  * Find the git root directory, resolving through worktree .git files.
@@ -120,6 +120,16 @@ function createSchema(db: Database) {
     );
     CREATE INDEX IF NOT EXISTS idx_card_files_path ON card_files(file_path);
 
+    CREATE TABLE IF NOT EXISTS prompt_history (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      summary     TEXT NOT NULL,
+      prompt      TEXT NOT NULL,
+      card_id     INTEGER REFERENCES cards(id) ON DELETE SET NULL,
+      source      TEXT DEFAULT 'manual',
+      commit_hash TEXT,
+      created_at  TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS project_meta (
       key   TEXT PRIMARY KEY,
       value TEXT
@@ -132,7 +142,21 @@ function createSchema(db: Database) {
 function migrateIfNeeded(db: Database) {
   const ver = Number(getMeta(db, "schema_version") ?? "0");
   if (ver >= SCHEMA_VERSION) return;
-  // Future migrations go here as sequential if blocks
+
+  if (ver < 2) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS prompt_history (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        summary     TEXT NOT NULL,
+        prompt      TEXT NOT NULL,
+        card_id     INTEGER REFERENCES cards(id) ON DELETE SET NULL,
+        source      TEXT DEFAULT 'manual',
+        commit_hash TEXT,
+        created_at  TEXT NOT NULL
+      );
+    `);
+  }
+
   setMeta(db, "schema_version", String(SCHEMA_VERSION));
 }
 
@@ -421,4 +445,77 @@ export function getCardsByFile(filePath: string): Card[] {
       "SELECT c.* FROM cards c JOIN card_files cf ON c.id = cf.card_id WHERE cf.file_path = ? AND c.archived = 0",
     )
     .all(filePath) as Card[];
+}
+
+// --- Prompt History ---
+
+export interface PromptEntry {
+  id: number;
+  summary: string;
+  prompt: string;
+  card_id: number | null;
+  source: string;
+  commit_hash: string | null;
+  created_at: string;
+}
+
+export function addPrompt(
+  summary: string,
+  prompt: string,
+  opts: {
+    cardId?: number;
+    source?: string;
+    commitHash?: string;
+    createdAt?: string;
+  } = {},
+): PromptEntry {
+  const db = getDb();
+  touchLastActive(db);
+  const now = opts.createdAt ?? new Date().toISOString();
+  const result = db
+    .query(
+      "INSERT INTO prompt_history (summary, prompt, card_id, source, commit_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .run(
+      summary,
+      prompt,
+      opts.cardId ?? null,
+      opts.source ?? "manual",
+      opts.commitHash ?? null,
+      now,
+    );
+  return {
+    id: Number(result.lastInsertRowid),
+    summary,
+    prompt,
+    card_id: opts.cardId ?? null,
+    source: opts.source ?? "manual",
+    commit_hash: opts.commitHash ?? null,
+    created_at: now,
+  };
+}
+
+export function getPromptHistory(limit = 100): PromptEntry[] {
+  const db = getDb();
+  return db
+    .query(
+      "SELECT * FROM prompt_history ORDER BY created_at DESC, id DESC LIMIT ?",
+    )
+    .all(limit) as PromptEntry[];
+}
+
+export function getPromptsByCard(cardId: number): PromptEntry[] {
+  const db = getDb();
+  return db
+    .query(
+      "SELECT * FROM prompt_history WHERE card_id = ? ORDER BY created_at DESC, id DESC",
+    )
+    .all(cardId) as PromptEntry[];
+}
+
+export function getPromptById(id: number): PromptEntry | null {
+  const db = getDb();
+  return db
+    .query("SELECT * FROM prompt_history WHERE id = ?")
+    .get(id) as PromptEntry | null;
 }

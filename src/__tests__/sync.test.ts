@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync, existsSync } from "fs";
 import { execSync } from "child_process";
 import { join } from "path";
 import { analyzeProject, createCardsFromAnalysis } from "../sync";
-import { listCards, closeDb, getDb } from "../db";
+import { listCards, getPromptHistory, closeDb, getDb } from "../db";
 
 function createTempGitRepo(): string {
   const dir = mkdtempSync("/tmp/.kban-test-");
@@ -409,5 +409,29 @@ describe("createCardsFromAnalysis", () => {
       expect(r.column).toBeTruthy();
       expect(r.shortId).toMatch(/^CB-\d+$/);
     }
+  });
+
+  test("populates prompt_history from git commits", () => {
+    execSync("git commit --allow-empty -m 'Add user auth'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+    execSync("git commit --allow-empty -m 'Fix login bug'", {
+      cwd: tempDir,
+      stdio: "ignore",
+    });
+
+    const a = analyzeProject(tempDir);
+    createCardsFromAnalysis(a, { prefix: "T" });
+
+    const prompts = getPromptHistory();
+    // Should have entries from all commits (including initial)
+    expect(prompts.length).toBe(3);
+    expect(prompts.some((p) => p.summary.includes("user auth"))).toBe(true);
+    expect(prompts.some((p) => p.summary.includes("login bug"))).toBe(true);
+    // All should be git_commit source
+    expect(prompts.every((p) => p.source === "git_commit")).toBe(true);
+    // All should have commit hashes
+    expect(prompts.every((p) => p.commit_hash)).toBe(true);
   });
 });

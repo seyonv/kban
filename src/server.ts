@@ -15,6 +15,10 @@ import {
   getDb,
   getMeta,
   autoArchive,
+  addPrompt,
+  getPromptHistory,
+  getPromptById,
+  getPromptsByCard,
 } from "./db";
 import { COLUMNS, type Column } from "./models/card";
 
@@ -140,6 +144,35 @@ function createFetchHandler() {
         return jsonRes({ error: "Decision text required" }, 400);
       const entry = addDecision(card.id, body.decision, body.reasoning);
       return jsonRes(entry, 201);
+    }
+
+    // GET /api/prompts
+    if (path === "/api/prompts" && req.method === "GET") {
+      const cardId = url.searchParams.get("card_id");
+      const prompts = cardId
+        ? getPromptsByCard(parseInt(cardId, 10))
+        : getPromptHistory();
+      return jsonRes(prompts);
+    }
+
+    // POST /api/prompts
+    if (path === "/api/prompts" && req.method === "POST") {
+      const body = await req.json();
+      if (!body.summary || !body.prompt)
+        return jsonRes({ error: "summary and prompt required" }, 400);
+      const entry = addPrompt(body.summary, body.prompt, {
+        cardId: body.card_id,
+        source: body.source,
+      });
+      return jsonRes(entry, 201);
+    }
+
+    // GET /api/prompts/:id
+    const promptMatch = path.match(/^\/api\/prompts\/(\d+)$/);
+    if (promptMatch && req.method === "GET") {
+      const entry = getPromptById(parseInt(promptMatch[1], 10));
+      if (!entry) return jsonRes({ error: "Not found" }, 404);
+      return jsonRes(entry);
     }
 
     return jsonRes({ error: "Not found" }, 404);
